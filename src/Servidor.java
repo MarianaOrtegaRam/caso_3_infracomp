@@ -14,13 +14,15 @@ public class Servidor {
     private static PublicKey publicKey;
 
     public static void main(String[] args) {
-        generarLlavesRSA(); // Generar y almacenar llaves RSA
-        cargarTablaPaquetes(); // Cargar la tabla con los 32 paquetes predeterminados
-        
+        // Genera el par de llaves RSA
+        generarLlavesRSA();
+        cargarTablaPaquetes(); // Cargar la tabla de paquetes predeterminada
+
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             System.out.println("Servidor iniciado en el puerto " + PORT);
             while (true) {
                 Socket clientSocket = serverSocket.accept();
+                // Aquí se crea la instancia de SrvThread con los parámetros correctos
                 new ThreadServidor(clientSocket, tablaPaquetes, privateKey, publicKey).start();
             }
         } catch (Exception e) {
@@ -36,7 +38,6 @@ public class Servidor {
             privateKey = pair.getPrivate();
             publicKey = pair.getPublic();
             System.out.println("Llaves RSA generadas.");
-            // Puedes agregar código para guardar las llaves en archivos si es necesario.
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -46,7 +47,7 @@ public class Servidor {
         // Cargar los 32 paquetes en la tabla con su estado inicial
         tablaPaquetes.put("cliente1_paquete1", new Paquete(Paquete.ENOFICINA));
         tablaPaquetes.put("cliente2_paquete2", new Paquete(Paquete.RECOGIDO));
-        // Agrega los demás paquetes según sea necesario para completar los 32.
+        // Agrega más paquetes según sea necesario
         System.out.println("Tabla de paquetes cargada.");
     }
 }
