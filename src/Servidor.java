@@ -1,34 +1,101 @@
 import java.io.*;
 import java.net.*;
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import java.util.Base64;
 import java.util.HashMap;
 
 public class Servidor {
     private static final int PORT = 12345;
+    private static final String PUBLIC_KEY_FILE = "publicKey.ser";
+    private static final String PRIVATE_KEY_FILE = "privateKey.ser";
+    private static KeyPair serverKeyPair;
     private static final HashMap<String, PackageInfo> packagesTable = new HashMap<>();
 
     public static void main(String[] args) {
-        // Generate or load keys
-        try {
-            ServerSocket serverSocket = new ServerSocket(PORT);
-            System.out.println("Server is running on port " + PORT);
-
-            // Initialize the package table
-            initializePackagesTable();
-
-            while (true) {
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("New client connected.");
-                new ThreadServidor(clientSocket, packagesTable).start();
-            }
-        } catch (IOException e) {
-            System.out.println("Server error: " + e.getMessage());
-        }
+        initializePackagesTable();
+        loadOrGenerateKeyPair();
+        displayMenu();
     }
 
     private static void initializePackagesTable() {
-        // Populate table with sample data
+        // Initialize package table with dummy data
         for (int i = 0; i < 32; i++) {
             packagesTable.put("client" + i, new PackageInfo("package" + i, "ENOFICINA"));
+        }
+    }
+
+    private static void loadOrGenerateKeyPair() {
+        File publicKeyFile = new File(PUBLIC_KEY_FILE);
+        File privateKeyFile = new File(PRIVATE_KEY_FILE);
+
+        if (publicKeyFile.exists() && privateKeyFile.exists()) {
+            System.out.println("Loading existing key pair...");
+            try (ObjectInputStream pubIn = new ObjectInputStream(new FileInputStream(publicKeyFile));
+                 ObjectInputStream privIn = new ObjectInputStream(new FileInputStream(privateKeyFile))) {
+                PublicKey publicKey = (PublicKey) pubIn.readObject();
+                PrivateKey privateKey = (PrivateKey) privIn.readObject();
+                serverKeyPair = new KeyPair(publicKey, privateKey);
+            } catch (Exception e) {
+                System.out.println("Error loading key pair: " + e.getMessage());
+            }
+        } else {
+            System.out.println("Generating new key pair...");
+            try {
+                KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+                keyGen.initialize(1024);
+                serverKeyPair = keyGen.generateKeyPair();
+
+                try (ObjectOutputStream pubOut = new ObjectOutputStream(new FileOutputStream(publicKeyFile));
+                     ObjectOutputStream privOut = new ObjectOutputStream(new FileOutputStream(privateKeyFile))) {
+                    pubOut.writeObject(serverKeyPair.getPublic());
+                    privOut.writeObject(serverKeyPair.getPrivate());
+                }
+                System.out.println("Key pair generated and saved.");
+            } catch (Exception e) {
+                System.out.println("Error generating key pair: " + e.getMessage());
+            }
+        }
+    }
+
+    private static void displayMenu() {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+        while (true) {
+            System.out.println("\n--- Server Menu ---");
+            System.out.println("1. Generate key pair");
+            System.out.println("2. Start server and handle client requests");
+            System.out.print("Choose an option: ");
+
+            try {
+                int choice = Integer.parseInt(reader.readLine());
+                switch (choice) {
+                    case 1:
+                        loadOrGenerateKeyPair();
+                        break;
+                    case 2:
+                        startServer();
+                        break;
+                    default:
+                        System.out.println("Invalid option. Please try again.");
+                }
+            } catch (IOException e) {
+                System.out.println("Input error: " + e.getMessage());
+            }
+        }
+    }
+
+    private static void startServer() {
+        System.out.println("Server is running on port " + PORT + "...");
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("Client connected.");
+                new ThreadServidor(clientSocket, packagesTable, serverKeyPair).start();
+            }
+        } catch (IOException e) {
+            System.out.println("Server error: " + e.getMessage());
         }
     }
 }
