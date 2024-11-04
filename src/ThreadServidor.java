@@ -20,12 +20,15 @@ public class ThreadServidor extends Thread {
 
             // Follow the protocol steps as per the provided image
             // Example: Handle SECINIT and response verification
-            String message = (String) in.readObject();
-            if ("SECINIT".equals(message)) {
-                // Step 2a and 2b: Process challenge/response as per protocol
-                // Assume that the challenge-response logic is implemented here
-                
-                out.writeObject("OK"); // or "ERROR" based on verification
+            String mensajeCliente = (String) in.readObject(); // Servidor espera "SECINIT"
+            System.out.println("Servidor: Recibió " + mensajeCliente);
+
+            if ("SECINIT".equals(mensajeCliente)) {
+                out.writeObject("OK"); // Servidor responde con "OK"
+                System.out.println("Servidor: Envió OK");
+            } else {
+                out.writeObject("ERROR");
+                System.out.println("Servidor: Envió ERROR");
             }
 
             // Continue with further steps as per the protocol, like key generation, etc.
