@@ -24,14 +24,15 @@ public class Cliente {
 
             // Step 1: Send "SECINIT" to initiate the protocol
             out.writeObject("SECINIT"); // Cliente envía "SECINIT"
+            out.flush();
             System.out.println("Cliente: Envió SECINIT");
-
+            
             String respuestaServidor = (String) in.readObject(); // Cliente espera respuesta
             System.out.println("Cliente: Recibió " + respuestaServidor);
             if (!"OK".equals(respuestaServidor)) {
                 throw new IOException("Desajuste en el protocolo: Se esperaba OK, se recibió " + respuestaServidor);
             }
-
+            
             // Step 2b: Generate a challenge (R) and send it to the server
             byte[] challenge = generateRandomChallenge();
             out.writeObject(challenge);
