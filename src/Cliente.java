@@ -1,36 +1,25 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
 
-public class Cliente {
-	
-	public static final int PUERTO = 3400;
-	public static final String SERVIDOR = "localhost";
-	
-	public static void main(String[] args) throws IOException {
-		
-		Socket socket = null;
-		PrintWriter escritor = null;
-		BufferedReader lector = null;
-		
-		System.out.println("Comienza cliente");
-		
-		try {
-			socket = new Socket(SERVIDOR, PUERTO);
-			escritor = new PrintWriter(socket.getOutputStream(), true);
-			lector = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-		}
-		
-		escritor.println("Hola servidor");
-		System.out.println(lector.readLine());
-		
-		socket.close();
-		escritor.close();
-		lector.close();
-	}
+public class Cliente{
+    private static final String SERVER_ADDRESS = "localhost";
+    private static final int SERVER_PORT = 12345;
+
+    public static void main(String[] args) {
+        try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+
+            String clientId = "client0";  // example client ID
+            String packageId = "package0";  // example package ID
+            out.writeObject(clientId);
+            out.writeObject(packageId);
+
+            String response = (String) in.readObject();
+            System.out.println("Package Status: " + response);
+
+        } catch (Exception e) {
+            System.out.println("Client error: " + e.getMessage());
+        }
+    }
 }
