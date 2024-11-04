@@ -1,97 +1,92 @@
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.math.BigInteger;
 import java.net.Socket;
-import java.security.MessageDigest;
+import java.security.*;
 import java.util.Arrays;
-import java.util.Random;
-import javax.crypto.Cipher;
-import javax.crypto.Mac;
-import javax.crypto.SecretKey;
+import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 public class ClienteRunnable implements Runnable {
-    private final int clienteId;
+    private String usuarioId;
+    private String paqueteId;
+    private static final String SERVIDOR_HOST = "localhost";
+    private static final int PUERTO_SERVIDOR = 1234;
 
-    public ClienteRunnable(int clienteId) {
-        this.clienteId = clienteId;
+    public ClienteRunnable(String usuarioId, String paqueteId) {
+        this.usuarioId = usuarioId;
+        this.paqueteId = paqueteId;
     }
 
     public void run() {
-        try (Socket socket = new Socket("localhost", 12345);
-             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-             ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+        try (Socket socket = new Socket("localhost", 1234);
+         ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+         ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
-            // Paso 1: Iniciar protocolo con "SECINIT"
-            out.writeUTF("SECINIT");
+            System.out.println("Cliente conectado al servidor en " + SERVIDOR_HOST + ":" + PUERTO_SERVIDOR);
 
-            // Paso 2: Recibir y descifrar el reto
-            byte[] retoCifrado = (byte[]) in.readObject();
-            int reto = descifrarRSA(retoCifrado); // Implementa descifrarRSA en el cliente
-            out.writeInt(reto);
+            out.writeObject("SECINIT");
 
-            // Paso 3: Verificar respuesta del servidor
-            if (!"OK".equals(in.readUTF())) {
-                System.out.println("Autenticación fallida");
-                return;
-            }
+            byte[] desafioEncriptado = (byte[]) in.readObject();
+            byte[] desafioDescifrado = descifrarConLlavePublica(desafioEncriptado);
+            System.out.println("Desafío recibido y descifrado.");
 
-            // Paso 4: Recibir P, G y G^x
-            BigInteger P = (BigInteger) in.readObject();
-            BigInteger G = (BigInteger) in.readObject();
-            BigInteger Gx = (BigInteger) in.readObject();
-
-            // Paso 5: Calcular G^y y enviar al servidor
-            Random random = new Random();
-            BigInteger y = new BigInteger(1024, random);
-            BigInteger Gy = G.modPow(y, P);
+            BigInteger G = new BigInteger("2");
+            BigInteger P = new BigInteger("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
+                                          + "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+                                          + "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
+                                          + "E485B576625E7EC6F44C42E9A63A36210000000000090563", 16);
+            BigInteger secretoCliente = new BigInteger(512, new SecureRandom());
+            BigInteger Gy = G.modPow(secretoCliente, P);
             out.writeObject(Gy);
 
-            // Calcular clave compartida G^(xy)
-            BigInteger sharedSecret = Gx.modPow(y, P);
+            BigInteger Gx = (BigInteger) in.readObject();
+            BigInteger secretoCompartido = Gx.modPow(secretoCliente, P);
+
             MessageDigest sha512 = MessageDigest.getInstance("SHA-512");
-            byte[] sharedSecretBytes = sha512.digest(sharedSecret.toByteArray());
+            byte[] digest = sha512.digest(secretoCompartido.toByteArray());
+            SecretKey llaveAES = new SecretKeySpec(Arrays.copyOfRange(digest, 0, 32), "AES");
+            SecretKey llaveHMAC = new SecretKeySpec(Arrays.copyOfRange(digest, 32, 64), "HMACSHA384");
 
-            SecretKey K_AB1 = new SecretKeySpec(Arrays.copyOfRange(sharedSecretBytes, 0, 32), "AES");
-            SecretKey K_AB2 = new SecretKeySpec(Arrays.copyOfRange(sharedSecretBytes, 32, 64), "HmacSHA384");
-
-            // Paso 6: Enviar datos cifrados con HMAC
-            String uid = "cliente" + clienteId;
-            byte[] uidCifrado = cifrarAES(uid.getBytes(), K_AB1);
-            byte[] uidHMAC = generarHMAC(uidCifrado, K_AB2);
+            String uid = usuarioId + "-" + paqueteId;
+            byte[] uidCifrado = cifrarConAES(uid.getBytes(), llaveAES);
+            byte[] hmac = generarHMAC(uidCifrado, llaveHMAC);
 
             out.writeObject(uidCifrado);
-            out.writeObject(uidHMAC);
+            out.writeObject(hmac);
+            System.out.println("UID cifrado y HMAC enviados al servidor.");
 
-            // Paso 7: Recibir confirmación final del servidor
-            if ("OK".equals(in.readUTF())) {
-                System.out.println("Protocolo completado exitosamente para el cliente " + clienteId);
-            } else {
-                System.out.println("Error en la verificación final.");
-            }
+            String respuesta = (String) in.readObject();
+            System.out.println("Respuesta del servidor: " + respuesta);
 
-        } catch (Exception e) {
+        } catch (IOException e) {
+            System.err.println("Error de conexión: " + e.getMessage());
             e.printStackTrace();
+        } finally {
+            try {
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                }
+            } catch (IOException e) {
+                System.err.println("Error cerrando el socket: " + e.getMessage());
+            }
         }
     }
 
-    private byte[] cifrarAES(byte[] data, SecretKey key) throws Exception {
+    private byte[] cifrarConAES(byte[] datos, SecretKey llaveAES) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         byte[] iv = new byte[16];
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
-        cipher.init(Cipher.ENCRYPT_MODE, key, ivSpec);
-        return cipher.doFinal(data);
+        new SecureRandom().nextBytes(iv);
+        cipher.init(Cipher.ENCRYPT_MODE, llaveAES, new IvParameterSpec(iv));
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        outputStream.write(iv);
+        outputStream.write(cipher.doFinal(datos));
+        return outputStream.toByteArray();
     }
 
-    private byte[] generarHMAC(byte[] data, SecretKey key) throws Exception {
-        Mac mac = Mac.getInstance("HmacSHA384");
-        mac.init(key);
-        return mac.doFinal(data);
-    }
-
-    private int descifrarRSA(byte[] mensajeCifrado) throws Exception {
-        // Implementa descifrado RSA en el cliente (necesita clave privada)
-        return 0;
+    private byte[] generarHMAC(byte[] datos, SecretKey llaveHMAC) throws Exception {
+        Mac hmac = Mac.getInstance("HmacSHA384");
+        hmac.init(llaveHMAC);
+        return hmac.doFinal(datos);
     }
 }

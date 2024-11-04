@@ -1,111 +1,108 @@
-// Importaciones necesarias...
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.math.BigInteger;
 import java.net.Socket;
 import java.security.*;
-import java.util.Arrays;
-import java.util.Map;
+import java.util.*;
 import javax.crypto.*;
-import javax.crypto.spec.*;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 public class ThreadServidor extends Thread {
-   private Socket socket;
-    private Map<String, Paquete> tablaPaquetes;
+    private Socket clientSocket;
     private PrivateKey privateKey;
-    private PublicKey publicKey;
+    private static final Map<String, Integer> tablaPaquetes = Servidor.getPackageTable();
 
-    // Constructor de SrvThread con los cuatro parámetros necesarios
-    public ThreadServidor(Socket socket, Map<String, Paquete> tablaPaquetes, PrivateKey privateKey, PublicKey publicKey) {
-        this.socket = socket;
-        this.tablaPaquetes = tablaPaquetes;
+    public ThreadServidor(Socket socket, PrivateKey privateKey) {
+        this.clientSocket = socket;
         this.privateKey = privateKey;
-        this.publicKey = publicKey;
     }
+
     public void run() {
-        try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
-             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+        try (ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
+             ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())) {
 
-            // Paso 0: Generar P y G usando OpenSSL
-            BigInteger[] pg = DiffieHellmanParam.generatePG("C:\\path_to_openssl\\");
-            BigInteger P = pg[0];
-            BigInteger G = pg[1];
-
-            // Paso 1: Recibir "SECINIT" del cliente
-            String initMsg = in.readUTF();
-            if (!"SECINIT".equals(initMsg)) {
-                out.writeUTF("ERROR");
-                return;
-            }
-
-            // Paso 2: Generar y enviar el reto cifrado
             SecureRandom random = new SecureRandom();
-            int reto = random.nextInt();
-            byte[] retoCifrado = cifrarRSA(reto, publicKey);
-            out.writeObject(retoCifrado);
+            byte[] challenge = new byte[16];
+            random.nextBytes(challenge);
 
-            // Paso 3: Recibir respuesta y verificar
-            int respuesta = in.readInt();
-            if (respuesta != reto) {
-                out.writeUTF("ERROR");
-                return;
-            }
-            out.writeUTF("OK");
+            // Cifra el desafío con la clave privada
+            out.writeObject(cifrarConLlavePrivada(challenge));
 
-            // Paso 4: Enviar P, G y G^x al cliente
-            BigInteger x = new BigInteger(1024, random);
-            BigInteger Gx = G.modPow(x, P); // G^x mod P
+            BigInteger G = new BigInteger("2");
+            BigInteger P = new BigInteger("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
+                                          + "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+                                          + "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
+                                          + "E485B576625E7EC6F44C42E9A63A36210000000000090563", 16);
+            BigInteger secretoServidor = new BigInteger(512, random);
+            BigInteger Gx = G.modPow(secretoServidor, P);
             out.writeObject(P);
             out.writeObject(G);
             out.writeObject(Gx);
 
-            // Paso 5: Recibir G^y del cliente y calcular la clave compartida G^(xy)
             BigInteger Gy = (BigInteger) in.readObject();
-            BigInteger sharedSecret = Gy.modPow(x, P);
+            BigInteger secretoCompartido = Gy.modPow(secretoServidor, P);
 
-            // Generar la clave simétrica y el HMAC usando SHA-512 y la clave compartida
             MessageDigest sha512 = MessageDigest.getInstance("SHA-512");
-            byte[] sharedSecretBytes = sha512.digest(sharedSecret.toByteArray());
-            SecretKey K_AB1 = new SecretKeySpec(Arrays.copyOfRange(sharedSecretBytes, 0, 32), "AES"); // Para cifrado
-            SecretKey K_AB2 = new SecretKeySpec(Arrays.copyOfRange(sharedSecretBytes, 32, 64), "HmacSHA384"); // Para HMAC
+            byte[] digest = sha512.digest(secretoCompartido.toByteArray());
+            SecretKey llaveAES = new SecretKeySpec(Arrays.copyOfRange(digest, 0, 32), "AES");
+            SecretKey llaveHMAC = new SecretKeySpec(Arrays.copyOfRange(digest, 32, 64), "HMACSHA384");
 
-            // Paso 6: Recibir y verificar datos del cliente (con HMAC)
-            byte[] uidCifrado = (byte[]) in.readObject();
-            byte[] uidHMAC = (byte[]) in.readObject();
-            if (!verificarHMAC(uidCifrado, uidHMAC, K_AB2)) {
-                out.writeUTF("ERROR");
-                return;
+            String uid = decryptAndVerify(in, llaveAES, llaveHMAC);
+            int status = tablaPaquetes.getOrDefault(uid, -1);
+
+            if (status == -1) {
+                out.writeObject("DESCONOCIDO");
+            } else {
+                out.writeObject("Estado: " + getStatusText(status));
             }
-
-            // Descifrar UID
-            String uid = descifrarAES(uidCifrado, K_AB1);
-
-            // Paso 7: Responder al cliente
-            out.writeUTF("OK");
-
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private byte[] cifrarRSA(int mensaje, PublicKey key) throws Exception {
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.ENCRYPT_MODE, key);
-        return cipher.doFinal(BigInteger.valueOf(mensaje).toByteArray());
-    }
-
-    private boolean verificarHMAC(byte[] data, byte[] hmac, SecretKey key) throws Exception {
-        Mac mac = Mac.getInstance("HmacSHA384");
-        mac.init(key);
-        byte[] computedHmac = mac.doFinal(data);
-        return Arrays.equals(computedHmac, hmac);
-    }
-
-    private String descifrarAES(byte[] data, SecretKey key) throws Exception {
+    private String decryptAndVerify(ObjectInputStream in, SecretKey aesKey, SecretKey hmacKey) throws Exception {
+        // Recibir el UID cifrado y el HMAC del cliente
+        byte[] uidCifrado = (byte[]) in.readObject();
+        byte[] hmacRecibido = (byte[]) in.readObject();
+    
+        // Verificar el HMAC
+        Mac hmac = Mac.getInstance("HmacSHA384");
+        hmac.init(hmacKey);
+        byte[] hmacCalculado = hmac.doFinal(uidCifrado);
+    
+        // Comparar el HMAC recibido con el calculado
+        if (!Arrays.equals(hmacRecibido, hmacCalculado)) {
+            throw new SecurityException("HMAC no coincide, mensaje alterado.");
+        }
+    
+        // Extraer el IV del mensaje cifrado
+        byte[] iv = Arrays.copyOfRange(uidCifrado, 0, 16);
+        byte[] datosCifrados = Arrays.copyOfRange(uidCifrado, 16, uidCifrado.length);
+    
+        // Descifrar el UID
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        byte[] iv = new byte[16];
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
-        cipher.init(Cipher.DECRYPT_MODE, key, ivSpec);
-        return new String(cipher.doFinal(data));
+        cipher.init(Cipher.DECRYPT_MODE, aesKey, new IvParameterSpec(iv));
+        byte[] uidDescifrado = cipher.doFinal(datosCifrados);
+    
+        // Convertir el UID descifrado a String y retornarlo
+        return new String(uidDescifrado);
+    }
+    
+    private byte[] cifrarConLlavePrivada(byte[] datos) throws Exception {
+        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, privateKey);
+        return cipher.doFinal(datos);
+    }
+
+    private String getStatusText(int status) {
+        switch (status) {
+            case 0: return "ENOFICINA";
+            case 1: return "RECOGIDO";
+            case 2: return "ENCLASIFICACION";
+            case 3: return "DESPACHADO";
+            case 4: return "ENENTREGA";
+            case 5: return "ENTREGADO";
+            default: return "DESCONOCIDO";
+        }
     }
 }
