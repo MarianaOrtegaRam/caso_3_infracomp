@@ -5,6 +5,7 @@ import java.security.*;
 import javax.crypto.*;
 import javax.crypto.interfaces.DHPrivateKey;
 import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -12,7 +13,6 @@ public class Cliente {
     private static final String SERVER_ADDRESS = "localhost";
     private static final int SERVER_PORT = 12345;
 
-    private static PublicKey serverPublicKey;
     private static SecretKey symmetricKey;
     private static SecretKey macKey;
     private static IvParameterSpec iv;
@@ -22,91 +22,66 @@ public class Cliente {
              ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
              ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
-            // Step 1: Send "SECINIT" to initiate the protocol
+            // Paso 1: Enviar "SECINIT" para iniciar el protocolo
             out.writeObject("SECINIT"); // Cliente envía "SECINIT"
             out.flush();
             System.out.println("Cliente: Envió SECINIT");
-            
-            String respuestaServidor = (String) in.readObject(); // Cliente espera respuesta
+
+            // Paso 2: Recibir confirmación "OK" del servidor
+            String respuestaServidor = (String) in.readObject();
             System.out.println("Cliente: Recibió " + respuestaServidor);
             if (!"OK".equals(respuestaServidor)) {
                 throw new IOException("Desajuste en el protocolo: Se esperaba OK, se recibió " + respuestaServidor);
             }
-            
-            // Step 2b: Generate a challenge (R) and send it to the server
+
+            // Paso 2b: Generar un desafío (R) y enviarlo al servidor
             byte[] challenge = generateRandomChallenge();
             out.writeObject(challenge);
 
-            // Step 4: Receive Rta (server’s response to the challenge)
+            // Paso 4: Recibir Rta (respuesta del servidor al desafío)
             byte[] response = (byte[]) in.readObject();
-
-            // Step 5: Verify Rta == R (in this example, we simply check if they match)
             if (!MessageDigest.isEqual(response, challenge)) {
-                System.out.println("Challenge response verification failed.");
+                System.out.println("Error: El servidor no pasó la verificación del desafío.");
                 return;
             }
             out.writeObject("OK");
 
-            // Step 7: Diffie-Hellman Key Exchange - Send G, P, G^x to the server
-            KeyPair dhKeyPair = generateDHKeyPair();
-            BigInteger G = getGenerator();
-            BigInteger P = getPrime();
-            BigInteger Gx = ((DHPublicKey) dhKeyPair.getPublic()).getY();
+            // Paso 7: Recibir G, P y G^x del servidor
+            BigInteger G = (BigInteger) in.readObject();
+            BigInteger P = (BigInteger) in.readObject();
+            BigInteger Gx = (BigInteger) in.readObject();
+            System.out.println("Cliente: Recibió G, P y G^x");
 
-            out.writeObject(G);
-            out.writeObject(P);
-            out.writeObject(Gx);
+            // Generar clave Diffie-Hellman usando los parámetros G y P recibidos
+            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
+            DHParameterSpec dhParamSpec = new DHParameterSpec(P, G);
+            keyGen.initialize(dhParamSpec);
+            KeyPair dhKeyPair = keyGen.generateKeyPair();
+            BigInteger Gy = ((DHPublicKey) dhKeyPair.getPublic()).getY();
 
-            // Step 9: Receive "OK" or "ERROR" based on server verification
-            String verificationStatus = (String) in.readObject();
-            if (!"OK".equals(verificationStatus)) {
-                System.out.println("Server verification failed.");
-                return;
-            }
+            // Paso 11a: Enviar G^y al servidor
+            out.writeObject(Gy);
+            out.flush();
+            System.out.println("Cliente: Envió G^y");
 
-            // Step 11a: Receive Gy from server, calculate symmetric keys
-            BigInteger Gy = (BigInteger) in.readObject();
-            BigInteger sharedSecret = Gy.modPow(((DHPrivateKey) dhKeyPair.getPrivate()).getX(), P);
+            // Calcular la clave compartida
+            BigInteger sharedSecret = Gx.modPow(((DHPrivateKey) dhKeyPair.getPrivate()).getX(), P);
+            System.out.println("Cliente: Clave secreta compartida derivada: " + bytesToHex(sharedSecret.toByteArray()));
 
-            // Step 11b: Derive AES and HMAC keys from the shared secret
+            // Derivar claves AES y HMAC a partir de la clave compartida
             byte[] secretBytes = sha512(sharedSecret.toByteArray());
             symmetricKey = new SecretKeySpec(secretBytes, 0, 32, "AES");
             macKey = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
 
-            // Step 12: Receive IV from server
+            // Depuración: Imprimir claves derivadas
+            System.out.println("Cliente: Clave AES derivada: " + bytesToHex(symmetricKey.getEncoded()));
+            System.out.println("Cliente: Clave HMAC derivada: " + bytesToHex(macKey.getEncoded()));
+
+            // Paso 12: Recibir IV del servidor
             iv = new IvParameterSpec((byte[]) in.readObject());
+            System.out.println("Cliente: Recibió IV: " + bytesToHex(iv.getIV()));
 
-            // Step 13: Send UID and HMAC to the server
-            String uid = "client0";
-            byte[] encryptedUid = encryptAES(uid, symmetricKey, iv);
-            byte[] hmacUid = generateHMAC(uid, macKey);
-
-            out.writeObject(encryptedUid);
-            out.writeObject(hmacUid);
-
-            // Step 14: Send package ID and HMAC to the server
-            String packageId = "package0";
-            byte[] encryptedPackageId = encryptAES(packageId, symmetricKey, iv);
-            byte[] hmacPackageId = generateHMAC(packageId, macKey);
-
-            out.writeObject(encryptedPackageId);
-            out.writeObject(hmacPackageId);
-
-            // Step 16: Send request for package status and HMAC
-            String request = "estado";
-            byte[] encryptedRequest = encryptAES(request, symmetricKey, iv);
-            byte[] hmacRequest = generateHMAC(request, macKey);
-
-            out.writeObject(encryptedRequest);
-            out.writeObject(hmacRequest);
-
-            // Step 17: Receive response from server
-            String responseStatus = (String) in.readObject();
-            if ("TERMINAR".equals(responseStatus)) {
-                System.out.println("Protocol completed successfully.");
-            } else {
-                System.out.println("Error in protocol execution.");
-            }
+            // Continuar con los pasos siguientes según el protocolo...
 
         } catch (Exception e) {
             System.out.println("Client error: " + e.getMessage());
@@ -154,4 +129,13 @@ public class Cliente {
         mac.init(key);
         return mac.doFinal(data.getBytes());
     }
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    
 }

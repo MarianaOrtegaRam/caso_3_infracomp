@@ -6,6 +6,7 @@ import java.util.HashMap;
 import javax.crypto.*;
 import javax.crypto.interfaces.DHPrivateKey;
 import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -24,87 +25,83 @@ public class ThreadServidor extends Thread {
         try (ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
              ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream())) {
 
-            // Step 1: Receive "SECINIT" and respond with "OK"
+            // Paso 1: Recibir "SECINIT" y responder con "OK"
             String mensajeCliente = (String) in.readObject();
             System.out.println("Servidor: Recibió " + mensajeCliente);
             if ("SECINIT".equals(mensajeCliente)) {
                 out.writeObject("OK");
+                out.flush();
                 System.out.println("Servidor: Envió OK");
-
-                // Step 2: Receive and respond to client's challenge
-                byte[] clientChallenge = (byte[]) in.readObject();
-                out.writeObject(clientChallenge); // Respond with the same challenge
-
-                // Step 3: Wait for client's "OK" confirmation to proceed
-                String challengeResponse = (String) in.readObject();
-                if ("OK".equals(challengeResponse)) {
-                    System.out.println("Servidor: Desafío verificado exitosamente.");
-
-                    // Step 4: Diffie-Hellman Key Exchange
-                    BigInteger G = (BigInteger) in.readObject();
-                    BigInteger P = (BigInteger) in.readObject();
-                    BigInteger Gx = (BigInteger) in.readObject();
-
-                    // Generate server's DH key pair and calculate G^y
-                    KeyPair dhKeyPair = generateDHKeyPair();
-                    BigInteger Gy = ((DHPublicKey) dhKeyPair.getPublic()).getY();
-                    BigInteger sharedSecret = Gx.modPow(((DHPrivateKey) dhKeyPair.getPrivate()).getX(), P);
-                    System.out.println("Servidor: Clave secreta compartida derivada.");
-
-                    // Step 5: Confirm Diffie-Hellman parameters and send G^y
-                    out.writeObject("OK");
-                    out.writeObject(Gy);
-
-                    // Step 6: Derive AES and HMAC keys from the shared secret
-                    byte[] secretBytes = sha512(sharedSecret.toByteArray());
-                    SecretKey aesKey = new SecretKeySpec(secretBytes, 0, 32, "AES");
-                    SecretKey macKey = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
-
-                    // Step 7: Send Initialization Vector (IV) to client
-                    IvParameterSpec iv = new IvParameterSpec(generateRandomIV());
-                    out.writeObject(iv.getIV());
-
-                    // Step 8: Receive and verify UID with HMAC
-                    byte[] encryptedUid = (byte[]) in.readObject();
-                    byte[] hmacUid = (byte[]) in.readObject();
-                    String uid = new String(decryptAES(encryptedUid, aesKey, iv), "UTF-8");
-
-                    if (MessageDigest.isEqual(hmacUid, generateHMAC(uid, macKey))) {
-                        System.out.println("Servidor: HMAC del UID verificado exitosamente.");
-
-                        // Step 9: Receive and verify package ID with HMAC
-                        byte[] encryptedPackageId = (byte[]) in.readObject();
-                        byte[] hmacPackageId = (byte[]) in.readObject();
-                        String packageId = new String(decryptAES(encryptedPackageId, aesKey, iv), "UTF-8");
-
-                        if (MessageDigest.isEqual(hmacPackageId, generateHMAC(packageId, macKey))) {
-                            System.out.println("Servidor: HMAC del ID del paquete verificado exitosamente.");
-
-                            // Step 10: Receive and verify request with HMAC
-                            byte[] encryptedRequest = (byte[]) in.readObject();
-                            byte[] hmacRequest = (byte[]) in.readObject();
-                            String request = new String(decryptAES(encryptedRequest, aesKey, iv), "UTF-8");
-
-                            if (MessageDigest.isEqual(hmacRequest, generateHMAC(request, macKey))) {
-                                System.out.println("Servidor: HMAC de la solicitud verificado exitosamente.");
-
-                                // Step 11: Send "TERMINAR" to confirm protocol completion
-                                out.writeObject("TERMINAR");
-                            } else {
-                                System.out.println("Error: Verificación del HMAC de la solicitud fallida.");
-                            }
-                        } else {
-                            System.out.println("Error: Verificación del HMAC del ID del paquete fallida.");
-                        }
-                    } else {
-                        System.out.println("Error: Verificación del HMAC del UID fallida.");
-                    }
-                } else {
-                    System.out.println("Error: Verificación del desafío fallida.");
-                }
             } else {
-                System.out.println("Error: No se recibió el mensaje SECINIT.");
+                System.out.println("Servidor: Mensaje inesperado recibido. Enviando ERROR y cerrando conexión.");
+                out.writeObject("ERROR");
+                out.flush();
+                clientSocket.close();
+                return;
             }
+
+            // Paso 2: Recibir el desafío del cliente y responder con el mismo desafío
+            byte[] clientChallenge = (byte[]) in.readObject();
+            System.out.println("Servidor: Recibió desafío del cliente");
+            out.writeObject(clientChallenge); // Responder con el mismo desafío
+            out.flush();
+            System.out.println("Servidor: Envió respuesta al desafío");
+
+            // Paso 3: Esperar confirmación "OK" del cliente
+            String challengeResponse = (String) in.readObject();
+            if (!"OK".equals(challengeResponse)) {
+                System.out.println("Error: Verificación del desafío fallida.");
+                clientSocket.close();
+                return;
+            }
+            System.out.println("Servidor: Desafío verificado exitosamente.");
+
+            // Paso 7: Generar G, P y G^x (con un primo de 1024 bits)
+            BigInteger G = new BigInteger("2"); // Generador comúnmente usado
+            BigInteger P = new BigInteger("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
+                                          + "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+                                          + "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
+                                          + "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
+                                          + "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D"
+                                          + "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F"
+                                          + "83655D23DCA3AD961C62F356208552BB9ED529077096966D"
+                                          + "670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF", 16);
+
+            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
+            DHParameterSpec dhParamSpec = new DHParameterSpec(P, G);
+            keyGen.initialize(dhParamSpec);
+            KeyPair dhKeyPair = keyGen.generateKeyPair();
+            BigInteger Gx = ((DHPublicKey) dhKeyPair.getPublic()).getY();
+
+            // Enviar G, P y G^x al cliente
+            out.writeObject(G);
+            out.writeObject(P);
+            out.writeObject(Gx);
+            out.flush();
+            System.out.println("Servidor: Envió G, P y G^x");
+
+            // Paso 11a: Recibir G^y del cliente y calcular la clave compartida
+            BigInteger Gy = (BigInteger) in.readObject();
+            BigInteger sharedSecret = Gy.modPow(((DHPrivateKey) dhKeyPair.getPrivate()).getX(), P);
+            System.out.println("Servidor: Clave secreta compartida derivada: " + bytesToHex(sharedSecret.toByteArray()));
+
+            // Derivar claves AES y HMAC a partir de la clave compartida
+            byte[] secretBytes = sha512(sharedSecret.toByteArray());
+            SecretKey aesKey = new SecretKeySpec(secretBytes, 0, 32, "AES");
+            SecretKey macKey = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
+
+            // Depuración: Imprimir claves derivadas
+            System.out.println("Servidor: Clave AES derivada: " + bytesToHex(aesKey.getEncoded()));
+            System.out.println("Servidor: Clave HMAC derivada: " + bytesToHex(macKey.getEncoded()));
+
+            // Paso 12: Enviar IV al cliente
+            IvParameterSpec iv = new IvParameterSpec(generateRandomIV());
+            out.writeObject(iv.getIV());
+            out.flush();
+            System.out.println("Servidor: Envió IV: " + bytesToHex(iv.getIV()));
+
+            // Continuar con los pasos siguientes del protocolo...
+
         } catch (Exception e) {
             System.out.println("Error al manejar el cliente: " + e.getMessage());
             e.printStackTrace();
@@ -117,34 +114,25 @@ public class ThreadServidor extends Thread {
         }
     }
 
-    // Utility methods for key generation, encryption, decryption, HMAC, etc.
-
-    private static KeyPair generateDHKeyPair() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException {
-        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
-        keyGen.initialize(1024);
-        return keyGen.generateKeyPair();
+    // Método auxiliar para convertir bytes a formato hexadecimal
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
-    private static byte[] generateRandomIV() {
-        byte[] iv = new byte[16];
-        new SecureRandom().nextBytes(iv);
-        return iv;
-    }
-
+    // Método auxiliar para generar el hash SHA-512 de un array de bytes
     private static byte[] sha512(byte[] input) throws NoSuchAlgorithmException {
         MessageDigest sha512 = MessageDigest.getInstance("SHA-512");
         return sha512.digest(input);
     }
 
-    private static byte[] decryptAES(byte[] encryptedData, SecretKey key, IvParameterSpec iv) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        cipher.init(Cipher.DECRYPT_MODE, key, iv);
-        return cipher.doFinal(encryptedData);
-    }
-
-    private static byte[] generateHMAC(String data, SecretKey key) throws Exception {
-        Mac mac = Mac.getInstance("HmacSHA384");
-        mac.init(key);
-        return mac.doFinal(data.getBytes());
+    // Método auxiliar para generar un IV aleatorio de 16 bytes
+    private static byte[] generateRandomIV() {
+        byte[] iv = new byte[16];
+        new SecureRandom().nextBytes(iv);
+        return iv;
     }
 }
