@@ -87,12 +87,12 @@ public class ThreadServidor extends Thread {
 
             // Derivar claves AES y HMAC a partir de la clave compartida
             byte[] secretBytes = sha512(sharedSecret.toByteArray());
-            SecretKey aesKey = new SecretKeySpec(secretBytes, 0, 32, "AES");
-            SecretKey macKey = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
+            SecretKey K_AB1 = new SecretKeySpec(secretBytes, 0, 32, "AES");
+            SecretKey K_AB2 = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
 
             // Depuración: Imprimir claves derivadas
-            System.out.println("Servidor: Clave AES derivada: " + bytesToHex(aesKey.getEncoded()));
-            System.out.println("Servidor: Clave HMAC derivada: " + bytesToHex(macKey.getEncoded()));
+            System.out.println("Servidor: Clave AES derivada: " + bytesToHex(K_AB1.getEncoded()));
+            System.out.println("Servidor: Clave HMAC derivada: " + bytesToHex(K_AB2.getEncoded()));
 
             // Paso 12: Enviar IV al cliente
             IvParameterSpec iv = new IvParameterSpec(generateRandomIV());
