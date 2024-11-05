@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public class Servidor {
     private static final int PORT = 12345;
@@ -35,28 +36,13 @@ public class Servidor {
 
     private static void initializePackagesTable() {
         // Initialize package table with dummy data
-        for (int j = 0; j < 8; j++) {
+        for (int j = 0; j < 12; j++) {
             ArrayList<PackageInfo> paquetes = new ArrayList<>();
+            Random random = new Random();
+            for (int i = 0; i < 31; i++){
 
-            for (int i = 0; i < 32; i++){
-                if (j % 10 == 0 ){
-                    paquetes.add(new PackageInfo("package" + i, "ENOFICINA"));
-                }
-                else if ( j % 9 == 0){
-                    paquetes.add(new PackageInfo("package" + i,"RECOGIDO"));
-                }
-                else if ( j % 8 == 0){
-                    paquetes.add(new PackageInfo("package" + i, "ENCLASIFICACION"));
-                }
-                else if ( j % 7 == 0){
-                    paquetes.add(new PackageInfo("package" + i, "DESPACHADO"));
-                }
-                else if ( j % 6 == 0){
-                    paquetes.add(new PackageInfo("package" + i, "ENENTREGA"));
-                }
-                else {
-                    paquetes.add(new PackageInfo("package" + i, "ENTREGADO"));
-                }
+                int numeroAleatorio = random.nextInt(6) + 1;
+                paquetes.add(new PackageInfo("package" + i, numeroAleatorio));
             }
             packagesTable.put("client"+ j , paquetes);
         }
@@ -160,9 +146,9 @@ public class Servidor {
 
 class PackageInfo {
     String packageId;
-    String status;
+    int status;
 
-    public PackageInfo(String packageId, String status) {
+    public PackageInfo(String packageId, int status) {
         this.packageId = packageId;
         this.status = status;
     }
@@ -171,7 +157,7 @@ class PackageInfo {
         return packageId;
     }
 
-    public String getStatus(){
+    public int getStatus(){
         return status;
     }
 }

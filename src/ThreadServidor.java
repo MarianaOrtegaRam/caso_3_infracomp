@@ -245,8 +245,8 @@ public class ThreadServidor extends Thread {
                 // Compara el ID del paquete
                 if (packageId.equals(id_paquete)) {
                     encontrado = true;
-                    System.out.println("Paquete encontrado, devolviendo estado: " + paquete.getStatus());
-                    return paquete.getStatus();
+                    System.out.println("Paquete encontrado, devolviendo estado: " + statusString(paquete.getStatus()));
+                    return statusString(paquete.getStatus());
                 }
                 x++;
             }
@@ -268,5 +268,23 @@ public class ThreadServidor extends Thread {
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.DECRYPT_MODE, key);
         return cipher.doFinal(data);
+    }
+
+    public String statusString(int status){
+
+        switch (status) {
+            case 1:
+                return "ENOFICINA";
+            case 2:
+                return "RECOGIDO";
+            case 3:
+                return "ENCLASIFICACION";
+            case 4:
+                return "DESPACHADO";
+            case 5:
+                return "ENENTREGA";
+            default:
+                return "ENTREGADO";
+        }
     }
 }
