@@ -13,8 +13,8 @@ public class Cliente {
     private static final String SERVER_ADDRESS = "localhost";
     private static final int SERVER_PORT = 12345;
 
-    private static SecretKey symmetricKey;
-    private static SecretKey macKey;
+    private static SecretKey K_AB1;
+    private static SecretKey K_AB2;
     private static IvParameterSpec iv;
 
     public static void main(String[] args) {
@@ -70,12 +70,12 @@ public class Cliente {
 
             // Derivar claves AES y HMAC a partir de la clave compartida
             byte[] secretBytes = sha512(sharedSecret.toByteArray());
-            symmetricKey = new SecretKeySpec(secretBytes, 0, 32, "AES");
-            macKey = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
+            K_AB1 = new SecretKeySpec(secretBytes, 0, 32, "AES");
+            K_AB2 = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
 
             // Depuración: Imprimir claves derivadas
-            System.out.println("Cliente: Clave AES derivada: " + bytesToHex(symmetricKey.getEncoded()));
-            System.out.println("Cliente: Clave HMAC derivada: " + bytesToHex(macKey.getEncoded()));
+            System.out.println("Cliente: Clave AES derivada: " + bytesToHex(K_AB1.getEncoded()));
+            System.out.println("Cliente: Clave HMAC derivada: " + bytesToHex(K_AB2.getEncoded()));
 
             // Paso 12: Recibir IV del servidor
             iv = new IvParameterSpec((byte[]) in.readObject());
