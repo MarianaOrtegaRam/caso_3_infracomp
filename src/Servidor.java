@@ -1,10 +1,6 @@
 import java.io.*;
 import java.net.*;
 import java.security.*;
-import java.security.spec.X509EncodedKeySpec;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import java.util.Base64;
 import java.util.HashMap;
 
 public class Servidor {
@@ -34,7 +30,7 @@ public class Servidor {
         if (publicKeyFile.exists() && privateKeyFile.exists()) {
             System.out.println("Loading existing key pair...");
             try (ObjectInputStream pubIn = new ObjectInputStream(new FileInputStream(publicKeyFile));
-                 ObjectInputStream privIn = new ObjectInputStream(new FileInputStream(privateKeyFile))) {
+                    ObjectInputStream privIn = new ObjectInputStream(new FileInputStream(privateKeyFile))) {
                 PublicKey publicKey = (PublicKey) pubIn.readObject();
                 PrivateKey privateKey = (PrivateKey) privIn.readObject();
                 serverKeyPair = new KeyPair(publicKey, privateKey);
@@ -49,7 +45,7 @@ public class Servidor {
                 serverKeyPair = keyGen.generateKeyPair();
 
                 try (ObjectOutputStream pubOut = new ObjectOutputStream(new FileOutputStream(publicKeyFile));
-                     ObjectOutputStream privOut = new ObjectOutputStream(new FileOutputStream(privateKeyFile))) {
+                        ObjectOutputStream privOut = new ObjectOutputStream(new FileOutputStream(privateKeyFile))) {
                     pubOut.writeObject(serverKeyPair.getPublic());
                     privOut.writeObject(serverKeyPair.getPrivate());
                 }
@@ -75,7 +71,21 @@ public class Servidor {
                         loadOrGenerateKeyPair();
                         break;
                     case 2:
-                        startServer();
+                        System.out.println("Choose server mode:");
+                        System.out.println("1. Concurrent server");
+                        System.out.println("2. Iterative server");
+
+                        int mode = Integer.parseInt(reader.readLine());
+                        switch (mode) {
+                            case 1:
+                                startServer(false);
+                                break;
+                            case 2:
+                                startServer(true);
+                                break;
+                            default:
+                                System.out.println("Invalid option. Please try again.");
+                        }
                         break;
                     default:
                         System.out.println("Invalid option. Please try again.");
@@ -86,13 +96,22 @@ public class Servidor {
         }
     }
 
-    private static void startServer() {
+    private static void startServer(boolean isIterative) {
         System.out.println("Server is running on port " + PORT + "...");
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             while (true) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Client connected.");
-                new ThreadServidor(clientSocket, packagesTable, serverKeyPair).start();
+                ThreadServidor threadServidor = new ThreadServidor(clientSocket, packagesTable, serverKeyPair);
+                threadServidor.start();
+
+                if (isIterative) {
+                    try {
+                        threadServidor.join();
+                    } catch (Exception e) {
+                        System.out.println("Error joining thread: " + e.getMessage());
+                    }
+                }
             }
         } catch (IOException e) {
             System.out.println("Server error: " + e.getMessage());
