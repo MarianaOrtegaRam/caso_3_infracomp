@@ -99,7 +99,39 @@ public class ThreadCliente extends Thread {
             iv = new IvParameterSpec((byte[]) in.readObject());
             System.out.println("Cliente: Recibió IV: " + bytesToHex(iv.getIV()));
 
-            // Continuar con los pasos siguientes según el protocolo...
+            // Paso 1: Enviar ID de usuario cifrado y HMAC
+            String userId = "client1";
+            byte[] encryptedUserId = encryptAES(userId, K_AB1, iv);
+            byte[] hmacUserId = generateHMAC(userId, K_AB2);
+
+            out.writeObject(encryptedUserId);
+            out.writeObject(hmacUserId);
+            
+            // Paso 2: Enviar ID de paquete cifrado y HMAC
+            String packageId = "package1";
+            byte[] encryptedPackageId = encryptAES(packageId, K_AB1, iv);
+            byte[] hmacPackageId = generateHMAC(packageId, K_AB2);
+
+            out.writeObject(encryptedPackageId);
+            out.writeObject(hmacPackageId);
+            
+            // Paso 3: Recibir estado del paquete cifrado y su HMAC
+            byte[] encryptedPackageStatus = (byte[]) in.readObject();
+            byte[] hmacPackageStatus = (byte[]) in.readObject();
+            String decryptedPackageStatus = new String(decryptAES(encryptedPackageStatus, K_AB1, iv), "UTF-8");
+
+            // Verificar HMAC del estado del paquete
+            byte[] calculatedHmacStatus = generateHMAC(decryptedPackageStatus, K_AB2);
+            if (MessageDigest.isEqual(hmacPackageStatus, calculatedHmacStatus)) {
+                System.out.println("Cliente: El estado del paquete es auténtico.");
+                System.out.println(decryptedPackageStatus);
+            } else {
+                System.out.println("Cliente: Error de autenticidad en el estado del paquete.");
+                return;
+            }
+
+            // Paso 4: Enviar mensaje "TERMINAR"
+            out.writeObject("TERMINAR");
 
         } catch (Exception e) {
             System.out.println("Client error: " + e.getMessage());
@@ -155,5 +187,13 @@ public class ThreadCliente extends Thread {
         }
         return sb.toString();
     }
+
+    private byte[] decryptAES(byte[] encryptedData, SecretKey key, IvParameterSpec iv) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, key, iv);
+        return cipher.doFinal(encryptedData);
+    }
+
+    
 
 }

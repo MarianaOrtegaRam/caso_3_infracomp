@@ -1,25 +1,64 @@
 import java.io.*;
 import java.net.*;
 import java.security.*;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class Servidor {
     private static final int PORT = 12345;
     private static final String PUBLIC_KEY_FILE = "publicKey.ser";
     private static final String PRIVATE_KEY_FILE = "privateKey.ser";
     private static KeyPair serverKeyPair;
-    private static final HashMap<String, PackageInfo> packagesTable = new HashMap<>();
+    private static final HashMap<String, ArrayList<PackageInfo>> packagesTable = new HashMap<>();
 
     public static void main(String[] args) {
         initializePackagesTable();
+        for (Map.Entry<String, ArrayList<PackageInfo>> entry : packagesTable.entrySet()) {
+        String userId = entry.getKey();
+        ArrayList<PackageInfo> packageList = entry.getValue();
+
+        System.out.println("Usuario ID: " + userId);
+        
+        if (packageList != null && !packageList.isEmpty()) {
+            for (PackageInfo paquete : packageList) {
+                System.out.println("  " + paquete.getPackageId() + " " + paquete.getStatus()); // Llama a toString() de PackageInfo para imprimir detalles
+            }
+        } else {
+            System.out.println("  No hay paquetes para este usuario.");
+        }
+    }
         loadOrGenerateKeyPair();
         displayMenu();
     }
 
     private static void initializePackagesTable() {
         // Initialize package table with dummy data
-        for (int i = 0; i < 32; i++) {
-            packagesTable.put("client" + i, new PackageInfo("package" + i, "ENOFICINA"));
+        for (int j = 0; j < 8; j++) {
+            ArrayList<PackageInfo> paquetes = new ArrayList<>();
+
+            for (int i = 0; i < 32; i++){
+                if (j % 10 == 0 ){
+                    paquetes.add(new PackageInfo("package" + i, "ENOFICINA"));
+                }
+                else if ( j % 9 == 0){
+                    paquetes.add(new PackageInfo("package" + i,"RECOGIDO"));
+                }
+                else if ( j % 8 == 0){
+                    paquetes.add(new PackageInfo("package" + i, "ENCLASIFICACION"));
+                }
+                else if ( j % 7 == 0){
+                    paquetes.add(new PackageInfo("package" + i, "DESPACHADO"));
+                }
+                else if ( j % 6 == 0){
+                    paquetes.add(new PackageInfo("package" + i, "ENENTREGA"));
+                }
+                else {
+                    paquetes.add(new PackageInfo("package" + i, "ENTREGADO"));
+                }
+            }
+            packagesTable.put("client"+ j , paquetes);
         }
     }
 
@@ -126,5 +165,13 @@ class PackageInfo {
     public PackageInfo(String packageId, String status) {
         this.packageId = packageId;
         this.status = status;
+    }
+
+    public String getPackageId(){
+        return packageId;
+    }
+
+    public String getStatus(){
+        return status;
     }
 }

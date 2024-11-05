@@ -1,7 +1,9 @@
 import java.io.*;
 import java.math.BigInteger;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.security.*;
+import java.util.ArrayList;
 import java.util.HashMap;
 import javax.crypto.*;
 import javax.crypto.interfaces.DHPrivateKey;
@@ -12,10 +14,10 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class ThreadServidor extends Thread {
     private final Socket clientSocket;
-    private final HashMap<String, PackageInfo> packagesTable;
+    private final HashMap<String, ArrayList<PackageInfo>> packagesTable;
     private final KeyPair serverKeyPair;
 
-    public ThreadServidor(Socket socket, HashMap<String, PackageInfo> packagesTable, KeyPair serverKeyPair) {
+    public ThreadServidor(Socket socket, HashMap<String, ArrayList<PackageInfo>> packagesTable, KeyPair serverKeyPair) {
         this.clientSocket = socket;
         this.packagesTable = packagesTable;
         this.serverKeyPair = serverKeyPair;
@@ -100,8 +102,68 @@ public class ThreadServidor extends Thread {
             out.flush();
             System.out.println("Servidor: Envió IV: " + bytesToHex(iv.getIV()));
 
-            // Continuar con los pasos siguientes del protocolo...
+            //paso cifrado: 
 
+            // Paso 4: Recibir ID de usuario y HMAC
+            byte[] encryptedUserId = (byte[]) in.readObject();
+            byte[] hmacUserId = (byte[]) in.readObject();
+            System.out.println("Servidor: Recibido ID de usuario cifrado y HMAC");
+
+            // Verificar y descifrar el ID de usuario...
+            byte[] decryptedUserId = decryptAES(encryptedUserId, K_AB1, iv);
+            String decryptedUserIdStr = new String(decryptedUserId, StandardCharsets.UTF_8);
+            byte[] hmacUserIDLocal = generateHMAC(decryptedUserIdStr, K_AB2);
+
+            if (!MessageDigest.isEqual(hmacUserId, hmacUserIDLocal)) {
+                System.out.println("No fue correcta la verificación. Cerrando conexión...");
+                // Cerrar el socket del cliente para finalizar la conexión
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    System.out.println("Error al cerrar el socket: " + e.getMessage());
+                }
+                return; // Opcionalmente, termina el método 'run' o la ejecución del hilo
+            }
+            System.out.println("Verificación HMAC exitosa. Procediendo...");
+            
+
+            // Paso 5: Recibir ID de paquete y HMAC
+            byte[] encryptedPackageId = (byte[]) in.readObject();
+            byte[] hmacPackageId = (byte[]) in.readObject();
+            System.out.println("Servidor: Recibido ID de paquete cifrado y HMAC");
+
+            byte[] decryptedPaqueteId = decryptAES(encryptedPackageId, K_AB1, iv);
+            String decryptedPaqueteIdStr = new String(decryptedPaqueteId, StandardCharsets.UTF_8);
+            byte[] hmacPaqueteIDLocal = generateHMAC(decryptedPaqueteIdStr, K_AB2);
+            
+            if (!MessageDigest.isEqual(hmacPackageId, hmacPaqueteIDLocal)) {
+                System.out.println("No fue correcta la verificación. Cerrando conexión...");
+                // Cerrar el socket del cliente para finalizar la conexión
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    System.out.println("Error al cerrar el socket: " + e.getMessage());
+                }
+                return; // Opcionalmente, termina el método 'run' o la ejecución del hilo
+            }
+            System.out.println("Verificación HMAC exitosa. Procediendo...");
+            
+
+            // Paso 6: Enviar estado del paquete cifrado y HMAC
+            String packageStatus = buscarEstadoDelPaquete(decryptedUserIdStr, decryptedPaqueteIdStr);
+            byte[] encryptedPackageStatus = encryptAES(packageStatus, K_AB1, iv);
+            byte[] hmacPackageStatus = generateHMAC(packageStatus, K_AB2);
+
+            out.writeObject(encryptedPackageStatus);
+            out.writeObject(hmacPackageStatus);
+            out.flush();
+            System.out.println("Servidor: Enviado estado del paquete cifrado y HMAC");
+
+            // Paso 7: Esperar "TERMINAR"
+            String finalizar = (String) in.readObject();
+            if ("TERMINAR".equals(finalizar)) {
+                System.out.println("Servidor: Protocolo completado con éxito.");
+            }
         } catch (Exception e) {
             System.out.println("Error al manejar el cliente: " + e.getMessage());
             e.printStackTrace();
@@ -134,5 +196,63 @@ public class ThreadServidor extends Thread {
         byte[] iv = new byte[16];
         new SecureRandom().nextBytes(iv);
         return iv;
+    }
+
+    // Métodos de descifrado y HMAC
+    private byte[] decryptAES(byte[] encryptedData, SecretKey key, IvParameterSpec iv) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, key, iv);
+        return cipher.doFinal(encryptedData);
+    }
+
+    private byte[] generateHMAC(String data, SecretKey key) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA384");
+        mac.init(key);
+        return mac.doFinal(data.getBytes("UTF-8"));
+    }
+
+    private String buscarEstadoDelPaquete(String userId, String packageId) {
+        // Verifica si el paquete es nulo
+        if (packageId == null) {
+            System.out.println("El packageId es null, devolviendo DESCONOCIDO");
+            return "DESCONOCIDO";
+        }
+    
+        // Obtiene la lista de paquetes del usuario
+        ArrayList<PackageInfo> listaPaquetes = packagesTable.get(userId);
+        if (listaPaquetes == null) {
+            System.out.println("Usuario no encontrado en el HashMap, devolviendo DESCONOCIDO");
+            return "DESCONOCIDO";
+        } else {
+            int x = 0;
+            boolean encontrado = false;
+            // Bucle para recorrer la lista de paquetes
+            while (x < listaPaquetes.size() && !encontrado) {
+                PackageInfo paquete = listaPaquetes.get(x);
+                String id_paquete = paquete.getPackageId();
+                
+                // Imprime el ID del paquete actual
+                System.out.println("Revisando paquete con ID: " + id_paquete);
+    
+                // Compara el ID del paquete
+                if (packageId.equals(id_paquete)) {
+                    encontrado = true;
+                    System.out.println("Paquete encontrado, devolviendo estado: " + paquete.getStatus());
+                    return paquete.getStatus();
+                }
+                x++;
+            }
+        }
+        // Si no se encontró, devuelve DESCONOCIDO
+        System.out.println("Paquete no encontrado, devolviendo DESCONOCIDO");
+        return "DESCONOCIDO";
+    }
+    
+
+    // Métodos de cifrado y HMAC
+    private byte[] encryptAES(String data, SecretKey key, IvParameterSpec iv) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, key, iv);
+        return cipher.doFinal(data.getBytes("UTF-8"));
     }
 }
