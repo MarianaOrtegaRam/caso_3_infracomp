@@ -15,12 +15,12 @@ import javax.crypto.spec.SecretKeySpec;
 public class ThreadServidor extends Thread {
     private final Socket clientSocket;
     private final HashMap<String, ArrayList<PackageInfo>> packagesTable;
-    private final KeyPair serverKeyPair;
+    private final PrivateKey privateKey;
 
     public ThreadServidor(Socket socket, HashMap<String, ArrayList<PackageInfo>> packagesTable, KeyPair serverKeyPair) {
         this.clientSocket = socket;
         this.packagesTable = packagesTable;
-        this.serverKeyPair = serverKeyPair;
+        this.privateKey = serverKeyPair.getPrivate();
     }
 
     public void run() {
@@ -42,21 +42,25 @@ public class ThreadServidor extends Thread {
                 return;
             }
 
-            // Paso 2: Recibir el desafío del cliente y responder con el mismo desafío
-            byte[] clientChallenge = (byte[]) in.readObject();
-            System.out.println("Servidor: Recibió desafío del cliente");
-            out.writeObject(clientChallenge); // Responder con el mismo desafío
-            out.flush();
-            System.out.println("Servidor: Envió respuesta al desafío");
+            // Paso 2: Recibir desafío cifrado del cliente
+            byte[] encryptedR = (byte[]) in.readObject();
 
-            // Paso 3: Esperar confirmación "OK" del cliente
-            String challengeResponse = (String) in.readObject();
-            if (!"OK".equals(challengeResponse)) {
-                System.out.println("Error: Verificación del desafío fallida.");
-                clientSocket.close();
-                return;
+            // Paso 3: Descifrar el desafío R usando la llave privada del servidor
+            byte[] R = decryptWithPrivateKey(encryptedR, privateKey);
+            System.out.println("Servidor: Desafío recibido y descifrado correctamente.");
+
+            // Enviar RTA (que es el mismo R) de vuelta al cliente
+            out.writeObject(R);
+            out.flush();
+            System.out.println("Servidor: Enviado RTA al cliente");
+
+            // Paso 6: Esperar confirmación del cliente
+            String response = (String) in.readObject();
+            if ("OK".equals(response)) {
+                System.out.println("Servidor: Cliente ha confirmado la verificación con OK.");
+            } else {
+                System.out.println("Servidor: Verificación fallida, cerrando conexión.");
             }
-            System.out.println("Servidor: Desafío verificado exitosamente.");
 
             // Paso 7: Generar G, P y G^x (con un primo de 1024 bits)
             BigInteger G = new BigInteger("2"); // Generador comúnmente usado
@@ -159,22 +163,26 @@ public class ThreadServidor extends Thread {
             out.flush();
             System.out.println("Servidor: Enviado estado del paquete cifrado y HMAC");
 
-            // Paso 7: Esperar "TERMINAR"
-            String finalizar = (String) in.readObject();
-            if ("TERMINAR".equals(finalizar)) {
-                System.out.println("Servidor: Protocolo completado con éxito.");
-            }
-        } catch (Exception e) {
-            System.out.println("Error al manejar el cliente: " + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            try {
-                clientSocket.close();
-            } catch (IOException e) {
-                System.out.println("Error al cerrar el socket del cliente.");
-            }
+            /// Confirmación de terminación
+        String finalizar = (String) in.readObject();
+        if ("TERMINAR".equals(finalizar)) {
+            System.out.println("Servidor: Protocolo completado con éxito, cerrando conexión.");
+        }
+    } catch (BadPaddingException e) {
+        System.out.println("Error en desencriptación: Verifica que la clave e IV coincidan.");
+    } catch (SocketException e) {
+        System.out.println("Servidor: El cliente cerró la conexión.");
+    } catch (Exception e) {
+        System.out.println("Error al manejar el cliente: " + e.getMessage());
+        e.printStackTrace();
+    } finally {
+        try {
+            clientSocket.close();
+        } catch (IOException e) {
+            System.out.println("Error al cerrar el socket del cliente.");
         }
     }
+}
 
     // Método auxiliar para convertir bytes a formato hexadecimal
     private static String bytesToHex(byte[] bytes) {
@@ -254,5 +262,11 @@ public class ThreadServidor extends Thread {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, key, iv);
         return cipher.doFinal(data.getBytes("UTF-8"));
+    }
+
+    private byte[] decryptWithPrivateKey(byte[] data, PrivateKey key) throws Exception {
+        Cipher cipher = Cipher.getInstance("RSA");
+        cipher.init(Cipher.DECRYPT_MODE, key);
+        return cipher.doFinal(data);
     }
 }

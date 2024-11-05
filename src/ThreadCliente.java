@@ -18,9 +18,11 @@ public class ThreadCliente extends Thread {
     private static IvParameterSpec iv;
 
     private boolean isIterative;
+    private final PublicKey publicKey;
 
-    public ThreadCliente(boolean isIterative) {
+    public ThreadCliente(boolean isIterative) throws Exception {
         this.isIterative = isIterative;
+        this.publicKey = loadPublicKey("publicKey.ser");
     }
 
     public void run() {
@@ -51,17 +53,26 @@ public class ThreadCliente extends Thread {
                 throw new IOException("Desajuste en el protocolo: Se esperaba OK, se recibió " + respuestaServidor);
             }
 
-            // Paso 2b: Generar un desafío (R) y enviarlo al servidor
-            byte[] challenge = generateRandomChallenge();
-            out.writeObject(challenge);
+            // Paso 1: Generar desafío R y cifrarlo con la llave pública del servidor
+            byte[] R = generateRandomChallenge();
+            byte[] encryptedR = encryptWithPublicKey(R, publicKey);
+            out.writeObject(encryptedR);
+            out.flush();
+            System.out.println("Cliente: Enviado desafío cifrado al servidor");
 
-            // Paso 4: Recibir Rta (respuesta del servidor al desafío)
-            byte[] response = (byte[]) in.readObject();
-            if (!MessageDigest.isEqual(response, challenge)) {
-                System.out.println("Error: El servidor no pasó la verificación del desafío.");
+            // Paso 4: Recibir RTA (respuesta del servidor)
+            byte[] RTA = (byte[]) in.readObject();
+
+            // Paso 5: Verificar si RTA es igual a R
+            if (MessageDigest.isEqual(R, RTA)) {
+                System.out.println("Cliente: Verificación exitosa, el servidor respondió correctamente.");
+                out.writeObject("OK");
+            } else {
+                System.out.println("Cliente: Error en la verificación, cerrando conexión.");
+                out.writeObject("ERROR");
+                socket.close();
                 return;
             }
-            out.writeObject("OK");
 
             // Paso 7: Recibir G, P y G^x del servidor
             BigInteger G = (BigInteger) in.readObject();
@@ -130,8 +141,13 @@ public class ThreadCliente extends Thread {
                 return;
             }
 
-            // Paso 4: Enviar mensaje "TERMINAR"
-            out.writeObject("TERMINAR");
+            // Paso Final: Enviar "TERMINAR" y cerrar conexión
+        out.writeObject("TERMINAR");
+        out.flush();
+        System.out.println("Cliente: Protocolo completado, cerrando conexión.");
+        } catch (EOFException e) {
+        System.out.println("Client error: Conexión finalizada inesperadamente.");
+    
 
         } catch (Exception e) {
             System.out.println("Client error: " + e.getMessage());
@@ -145,6 +161,12 @@ public class ThreadCliente extends Thread {
         byte[] challenge = new byte[16];
         new SecureRandom().nextBytes(challenge);
         return challenge;
+    }
+
+    private byte[] encryptWithPublicKey(byte[] data, PublicKey key) throws Exception {
+        Cipher cipher = Cipher.getInstance("RSA");
+        cipher.init(Cipher.ENCRYPT_MODE, key);
+        return cipher.doFinal(data);
     }
 
     private static KeyPair generateDHKeyPair() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException {
@@ -193,7 +215,11 @@ public class ThreadCliente extends Thread {
         cipher.init(Cipher.DECRYPT_MODE, key, iv);
         return cipher.doFinal(encryptedData);
     }
-
+    private PublicKey loadPublicKey(String filePath) throws Exception {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath))) {
+            return (PublicKey) ois.readObject();
+        }
+    }
     
 
 }
