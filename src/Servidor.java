@@ -3,7 +3,6 @@ import java.net.*;
 import java.security.*;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -17,35 +16,38 @@ public class Servidor {
     public static void main(String[] args) {
         initializePackagesTable();
         for (Map.Entry<String, ArrayList<PackageInfo>> entry : packagesTable.entrySet()) {
-        String userId = entry.getKey();
-        ArrayList<PackageInfo> packageList = entry.getValue();
+            String userId = entry.getKey();
+            ArrayList<PackageInfo> packageList = entry.getValue();
 
-        System.out.println("Usuario ID: " + userId);
-        
-        if (packageList != null && !packageList.isEmpty()) {
-            for (PackageInfo paquete : packageList) {
-                System.out.println("  " + paquete.getPackageId() + " " + paquete.getStatus()); // Llama a toString() de PackageInfo para imprimir detalles
+            System.out.println("Usuario ID: " + userId);
+
+            if (packageList != null && !packageList.isEmpty()) {
+                for (PackageInfo paquete : packageList) {
+                    System.out.println("  " + paquete.getPackageId() + " " + paquete.getStatus()); // Llama a toString()
+                                                                                                   // de PackageInfo
+                                                                                                   // para imprimir
+                                                                                                   // detalles
+                }
+            } else {
+                System.out.println("  No hay paquetes para este usuario.");
             }
-        } else {
-            System.out.println("  No hay paquetes para este usuario.");
+
         }
-        
-    }
         loadOrGenerateKeyPair();
         displayMenu();
     }
 
     private static void initializePackagesTable() {
         // Initialize package table with dummy data
-        for (int j = 0; j < 16; j++) {
+        for (int j = 0; j < 31; j++) {
             ArrayList<PackageInfo> paquetes = new ArrayList<>();
             Random random = new Random();
-            for (int i = 0; i < 31; i++){
+            for (int i = 0; i < 31; i++) {
 
                 int numeroAleatorio = random.nextInt(6) + 1;
                 paquetes.add(new PackageInfo("package" + i, numeroAleatorio));
             }
-            packagesTable.put("client"+ j , paquetes);
+            packagesTable.put("client" + j, paquetes);
         }
     }
 
@@ -97,21 +99,7 @@ public class Servidor {
                         loadOrGenerateKeyPair();
                         break;
                     case 2:
-                        System.out.println("Choose server mode:");
-                        System.out.println("1. Concurrent server");
-                        System.out.println("2. Iterative server");
-
-                        int mode = Integer.parseInt(reader.readLine());
-                        switch (mode) {
-                            case 1:
-                                startServer(false);
-                                break;
-                            case 2:
-                                startServer(true);
-                                break;
-                            default:
-                                System.out.println("Invalid option. Please try again.");
-                        }
+                        startServer(true);
                         break;
                     default:
                         System.out.println("Invalid option. Please try again.");
@@ -154,11 +142,11 @@ class PackageInfo {
         this.status = status;
     }
 
-    public String getPackageId(){
+    public String getPackageId() {
         return packageId;
     }
 
-    public int getStatus(){
+    public int getStatus() {
         return status;
     }
 }
