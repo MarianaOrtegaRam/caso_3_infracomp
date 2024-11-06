@@ -25,7 +25,7 @@ public class ThreadServidor extends Thread {
 
     public void run() {
         try (ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
-             ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream())) {
+                ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream())) {
 
             // Paso 1: Recibir "SECINIT" y responder con "OK"
             String mensajeCliente = (String) in.readObject();
@@ -46,8 +46,14 @@ public class ThreadServidor extends Thread {
             byte[] encryptedR = (byte[]) in.readObject();
 
             // Paso 3: Descifrar el desafío R usando la llave privada del servidor
+            long startTime1 = System.nanoTime();
+
             byte[] R = decryptWithPrivateKey(encryptedR, privateKey);
             System.out.println("Servidor: Desafío recibido y descifrado correctamente.");
+
+            long endTime1 = System.nanoTime();
+            long executionTimeNanoseconds = endTime1 - startTime1;
+            double executionTimeMilliseconds1 = executionTimeNanoseconds / 1000000.0;
 
             // Enviar RTA (que es el mismo R) de vuelta al cliente
             out.writeObject(R);
@@ -65,13 +71,13 @@ public class ThreadServidor extends Thread {
             // Paso 7: Generar G, P y G^x (con un primo de 1024 bits)
             BigInteger G = new BigInteger("2"); // Generador comúnmente usado
             BigInteger P = new BigInteger("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
-                                          + "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
-                                          + "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
-                                          + "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
-                                          + "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D"
-                                          + "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F"
-                                          + "83655D23DCA3AD961C62F356208552BB9ED529077096966D"
-                                          + "670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF", 16);
+                    + "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+                    + "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
+                    + "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
+                    + "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D"
+                    + "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F"
+                    + "83655D23DCA3AD961C62F356208552BB9ED529077096966D"
+                    + "670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF", 16);
 
             KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
             DHParameterSpec dhParamSpec = new DHParameterSpec(P, G);
@@ -89,7 +95,8 @@ public class ThreadServidor extends Thread {
             // Paso 11a: Recibir G^y del cliente y calcular la clave compartida
             BigInteger Gy = (BigInteger) in.readObject();
             BigInteger sharedSecret = Gy.modPow(((DHPrivateKey) dhKeyPair.getPrivate()).getX(), P);
-            System.out.println("Servidor: Clave secreta compartida derivada: " + bytesToHex(sharedSecret.toByteArray()));
+            System.out
+                    .println("Servidor: Clave secreta compartida derivada: " + bytesToHex(sharedSecret.toByteArray()));
 
             // Derivar claves AES y HMAC a partir de la clave compartida
             byte[] secretBytes = sha512(sharedSecret.toByteArray());
@@ -106,7 +113,7 @@ public class ThreadServidor extends Thread {
             out.flush();
             System.out.println("Servidor: Envió IV: " + bytesToHex(iv.getIV()));
 
-            //paso cifrado: 
+            // paso cifrado:
 
             // Paso 4: Recibir ID de usuario y HMAC
             byte[] encryptedUserId = (byte[]) in.readObject();
@@ -129,7 +136,6 @@ public class ThreadServidor extends Thread {
                 return; // Opcionalmente, termina el método 'run' o la ejecución del hilo
             }
             System.out.println("Verificación HMAC exitosa. Procediendo...");
-            
 
             // Paso 5: Recibir ID de paquete y HMAC
             byte[] encryptedPackageId = (byte[]) in.readObject();
@@ -139,7 +145,7 @@ public class ThreadServidor extends Thread {
             byte[] decryptedPaqueteId = decryptAES(encryptedPackageId, K_AB1, iv);
             String decryptedPaqueteIdStr = new String(decryptedPaqueteId, StandardCharsets.UTF_8);
             byte[] hmacPaqueteIDLocal = generateHMAC(decryptedPaqueteIdStr, K_AB2);
-            
+
             if (!MessageDigest.isEqual(hmacPackageId, hmacPaqueteIDLocal)) {
                 System.out.println("No fue correcta la verificación. Cerrando conexión...");
                 // Cerrar el socket del cliente para finalizar la conexión
@@ -151,7 +157,6 @@ public class ThreadServidor extends Thread {
                 return; // Opcionalmente, termina el método 'run' o la ejecución del hilo
             }
             System.out.println("Verificación HMAC exitosa. Procediendo...");
-            
 
             // Paso 6: Enviar estado del paquete cifrado y HMAC
             String packageStatus = buscarEstadoDelPaquete(decryptedUserIdStr, decryptedPaqueteIdStr);
@@ -164,25 +169,27 @@ public class ThreadServidor extends Thread {
             System.out.println("Servidor: Enviado estado del paquete cifrado y HMAC");
 
             /// Confirmación de terminación
-        String finalizar = (String) in.readObject();
-        if ("TERMINAR".equals(finalizar)) {
-            System.out.println("Servidor: Protocolo completado con éxito, cerrando conexión.");
-        }
-    } catch (BadPaddingException e) {
-        System.out.println("Error en desencriptación: Verifica que la clave e IV coincidan.");
-    } catch (SocketException e) {
-        System.out.println("Servidor: El cliente cerró la conexión.");
-    } catch (Exception e) {
-        System.out.println("Error al manejar el cliente: " + e.getMessage());
-        e.printStackTrace();
-    } finally {
-        try {
-            clientSocket.close();
-        } catch (IOException e) {
-            System.out.println("Error al cerrar el socket del cliente.");
+            String finalizar = (String) in.readObject();
+            if ("TERMINAR".equals(finalizar)) {
+                System.out.println("Servidor: Protocolo completado con éxito, cerrando conexión.");
+                System.out.println(
+                        "Tiempo de ejecución responder el reto : " + executionTimeMilliseconds1 + " millisegundos");
+            }
+        } catch (BadPaddingException e) {
+            System.out.println("Error en desencriptación: Verifica que la clave e IV coincidan.");
+        } catch (SocketException e) {
+            System.out.println("Servidor: El cliente cerró la conexión.");
+        } catch (Exception e) {
+            System.out.println("Error al manejar el cliente: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try {
+                clientSocket.close();
+            } catch (IOException e) {
+                System.out.println("Error al cerrar el socket del cliente.");
+            }
         }
     }
-}
 
     // Método auxiliar para convertir bytes a formato hexadecimal
     private static String bytesToHex(byte[] bytes) {
@@ -225,7 +232,7 @@ public class ThreadServidor extends Thread {
             System.out.println("El packageId es null, devolviendo DESCONOCIDO");
             return "DESCONOCIDO";
         }
-    
+
         // Obtiene la lista de paquetes del usuario
         ArrayList<PackageInfo> listaPaquetes = packagesTable.get(userId);
         if (listaPaquetes == null) {
@@ -238,10 +245,10 @@ public class ThreadServidor extends Thread {
             while (x < listaPaquetes.size() && !encontrado) {
                 PackageInfo paquete = listaPaquetes.get(x);
                 String id_paquete = paquete.getPackageId();
-                
+
                 // Imprime el ID del paquete actual
                 System.out.println("Revisando paquete con ID: " + id_paquete);
-    
+
                 // Compara el ID del paquete
                 if (packageId.equals(id_paquete)) {
                     encontrado = true;
@@ -255,7 +262,6 @@ public class ThreadServidor extends Thread {
         System.out.println("Paquete no encontrado, devolviendo DESCONOCIDO");
         return "DESCONOCIDO";
     }
-    
 
     // Métodos de cifrado y HMAC
     private byte[] encryptAES(String data, SecretKey key, IvParameterSpec iv) throws Exception {
@@ -270,7 +276,7 @@ public class ThreadServidor extends Thread {
         return cipher.doFinal(data);
     }
 
-    public String statusString(int status){
+    public String statusString(int status) {
 
         switch (status) {
             case 1:
