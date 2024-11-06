@@ -19,16 +19,21 @@ public class ThreadCliente extends Thread {
 
     private boolean isIterative;
     private final PublicKey publicKey;
+    private String userId;
+    private String packageId;
 
-    public ThreadCliente(boolean isIterative) throws Exception {
+    public ThreadCliente(boolean isIterative, int id) throws Exception {
         this.isIterative = isIterative;
+        this.userId = "client"+id;
         this.publicKey = loadPublicKey("publicKey.ser");
+        this.packageId = "package"+id;
     }
 
     public void run() {
         if (this.isIterative) {
             for (int i = 0; i < 32; i++) {
                 System.out.println("Iteración " + i);
+                this.packageId = "package"+i;
                 theExecution();
             }
         } else {
@@ -111,7 +116,6 @@ public class ThreadCliente extends Thread {
             System.out.println("Cliente: Recibió IV: " + bytesToHex(iv.getIV()));
 
             // Paso 1: Enviar ID de usuario cifrado y HMAC
-            String userId = "client1";
             byte[] encryptedUserId = encryptAES(userId, K_AB1, iv);
             byte[] hmacUserId = generateHMAC(userId, K_AB2);
 
@@ -119,7 +123,6 @@ public class ThreadCliente extends Thread {
             out.writeObject(hmacUserId);
             
             // Paso 2: Enviar ID de paquete cifrado y HMAC
-            String packageId = "package1";
             byte[] encryptedPackageId = encryptAES(packageId, K_AB1, iv);
             byte[] hmacPackageId = generateHMAC(packageId, K_AB2);
 

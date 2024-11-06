@@ -29,6 +29,7 @@ public class Servidor {
         } else {
             System.out.println("  No hay paquetes para este usuario.");
         }
+        
     }
         loadOrGenerateKeyPair();
         displayMenu();
@@ -36,7 +37,7 @@ public class Servidor {
 
     private static void initializePackagesTable() {
         // Initialize package table with dummy data
-        for (int j = 0; j < 12; j++) {
+        for (int j = 0; j < 16; j++) {
             ArrayList<PackageInfo> paquetes = new ArrayList<>();
             Random random = new Random();
             for (int i = 0; i < 31; i++){
