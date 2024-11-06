@@ -39,10 +39,10 @@ public class Servidor {
 
     private static void initializePackagesTable() {
         // Initialize package table with dummy data
-        for (int j = 0; j < 32; j++) {
+        for (int j = 0; j < 64; j++) {
             ArrayList<PackageInfo> paquetes = new ArrayList<>();
             Random random = new Random();
-            for (int i = 0; i < 32; i++) {
+            for (int i = 0; i < 64; i++) {
 
                 int numeroAleatorio = random.nextInt(6) + 1;
                 paquetes.add(new PackageInfo("package" + i, numeroAleatorio));

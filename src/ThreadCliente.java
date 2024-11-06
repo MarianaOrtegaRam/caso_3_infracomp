@@ -24,16 +24,16 @@ public class ThreadCliente extends Thread {
 
     public ThreadCliente(boolean isIterative, int id) throws Exception {
         this.isIterative = isIterative;
-        this.userId = "client"+id;
+        this.userId = "client" + id;
         this.publicKey = loadPublicKey("publicKey.ser");
-        this.packageId = "package"+id;
+        this.packageId = "package" + id;
     }
 
     public void run() {
         if (this.isIterative) {
-            for (int i = 0; i < 32; i++) {
+            for (int i = 0; i < 64; i++) {
                 System.out.println("Iteración " + i);
-                this.packageId = "package"+i;
+                this.packageId = "package" + i;
                 theExecution();
             }
         } else {
@@ -121,14 +121,14 @@ public class ThreadCliente extends Thread {
 
             out.writeObject(encryptedUserId);
             out.writeObject(hmacUserId);
-            
+
             // Paso 2: Enviar ID de paquete cifrado y HMAC
             byte[] encryptedPackageId = encryptAES(packageId, K_AB1, iv);
             byte[] hmacPackageId = generateHMAC(packageId, K_AB2);
 
             out.writeObject(encryptedPackageId);
             out.writeObject(hmacPackageId);
-            
+
             // Paso 3: Recibir estado del paquete cifrado y su HMAC
             byte[] encryptedPackageStatus = (byte[]) in.readObject();
             byte[] hmacPackageStatus = (byte[]) in.readObject();
@@ -145,12 +145,11 @@ public class ThreadCliente extends Thread {
             }
 
             // Paso Final: Enviar "TERMINAR" y cerrar conexión
-        out.writeObject("TERMINAR");
-        out.flush();
-        System.out.println("Cliente: Protocolo completado, cerrando conexión.");
+            out.writeObject("TERMINAR");
+            out.flush();
+            System.out.println("Cliente: Protocolo completado, cerrando conexión.");
         } catch (EOFException e) {
-        System.out.println("Client error: Conexión finalizada inesperadamente.");
-    
+            System.out.println("Client error: Conexión finalizada inesperadamente.");
 
         } catch (Exception e) {
             System.out.println("Client error: " + e.getMessage());
@@ -218,11 +217,11 @@ public class ThreadCliente extends Thread {
         cipher.init(Cipher.DECRYPT_MODE, key, iv);
         return cipher.doFinal(encryptedData);
     }
+
     private PublicKey loadPublicKey(String filePath) throws Exception {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath))) {
             return (PublicKey) ois.readObject();
         }
     }
-    
 
 }
