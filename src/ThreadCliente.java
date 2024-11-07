@@ -59,11 +59,17 @@ public class ThreadCliente extends Thread {
             }
 
             // Paso 1: Generar desafío R y cifrarlo con la llave pública del servidor
+
+            // CASO 4: PARTE ASIMETRICA
+            long startTimeA = System.nanoTime();
             byte[] R = generateRandomChallenge();
             byte[] encryptedR = encryptWithPublicKey(R, publicKey);
             out.writeObject(encryptedR);
             out.flush();
             System.out.println("Cliente: Enviado desafío cifrado al servidor");
+            long endTimeA = System.nanoTime();
+            long durationA = endTimeA - startTimeA;
+            double milisegundosA = (double) durationA / 1000000.0;
 
             // Paso 4: Recibir RTA (respuesta del servidor)
             byte[] RTA = (byte[]) in.readObject();
@@ -148,6 +154,7 @@ public class ThreadCliente extends Thread {
             out.writeObject("TERMINAR");
             out.flush();
             System.out.println("Cliente: Protocolo completado, cerrando conexión.");
+            System.out.println("Tiempo de ejecución asimétrico: " + milisegundosA + " milisegundos");
         } catch (EOFException e) {
             System.out.println("Client error: Conexión finalizada inesperadamente.");
 

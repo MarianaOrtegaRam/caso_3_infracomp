@@ -46,6 +46,8 @@ public class ThreadServidor extends Thread {
             byte[] encryptedR = (byte[]) in.readObject();
 
             // Paso 3: Descifrar el desafío R usando la llave privada del servidor
+
+            ///CASO 4:PARTE SIMETRICA
             long startTime1 = System.nanoTime();
 
             byte[] R = decryptWithPrivateKey(encryptedR, privateKey);
@@ -54,7 +56,7 @@ public class ThreadServidor extends Thread {
             long endTime1 = System.nanoTime();
             long executionTimeNanoseconds = endTime1 - startTime1;
             double executionTimeMilliseconds1 = executionTimeNanoseconds / 1000000.0;
-
+            // FIN CASO 4 PARTE SIMETRICA
             // Enviar RTA (que es el mismo R) de vuelta al cliente
             out.writeObject(R);
             out.flush();
@@ -69,7 +71,17 @@ public class ThreadServidor extends Thread {
             }
 
             // Paso 7: Generar G, P y G^x (con un primo de 1024 bits)
+
+            // Generar G
+            long startTimeG = System.nanoTime();
             BigInteger G = new BigInteger("2"); // Generador comúnmente usado
+            long endTimeG = System.nanoTime();
+            long executionTimeNanosecondsG = endTimeG - startTimeG;
+            double executionTimeMillisecondsG = executionTimeNanosecondsG / 1000000.0;
+
+            // Generar P
+
+            long startTimeP = System.nanoTime();
             BigInteger P = new BigInteger("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
                     + "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
                     + "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
@@ -79,11 +91,21 @@ public class ThreadServidor extends Thread {
                     + "83655D23DCA3AD961C62F356208552BB9ED529077096966D"
                     + "670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF", 16);
 
+            long endTimeP = System.nanoTime();
+            long executionTimeNanosecondsP = endTimeP - startTimeP;
+            double executionTimeMillisecondsP = executionTimeNanosecondsP / 1000000.0;
+
+            // Generar G^x
+
+            long startTimeGx = System.nanoTime();
             KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
             DHParameterSpec dhParamSpec = new DHParameterSpec(P, G);
             keyGen.initialize(dhParamSpec);
             KeyPair dhKeyPair = keyGen.generateKeyPair();
             BigInteger Gx = ((DHPublicKey) dhKeyPair.getPublic()).getY();
+            long endTimeGx = System.nanoTime();
+            long executionTimeNanosecondsGx = endTimeGx - startTimeGx;
+            double executionTimeMillisecondsGx = executionTimeNanosecondsGx / 1000000.0;
 
             // Enviar G, P y G^x al cliente
             out.writeObject(G);
@@ -113,7 +135,8 @@ public class ThreadServidor extends Thread {
             out.flush();
             System.out.println("Servidor: Envió IV: " + bytesToHex(iv.getIV()));
 
-            // paso cifrado:
+            // caso 3
+            long startTimeVE = System.nanoTime();
 
             // Paso 4: Recibir ID de usuario y HMAC
             byte[] encryptedUserId = (byte[]) in.readObject();
@@ -158,6 +181,10 @@ public class ThreadServidor extends Thread {
             }
             System.out.println("Verificación HMAC exitosa. Procediendo...");
 
+            long endTimeVE = System.nanoTime();
+            long executionTimeNanosecondsVE = endTimeVE - startTimeVE;
+            double executionTimeMillisecondsVE = executionTimeNanosecondsVE / 1000000.0;
+            ///termina caso 3
             // Paso 6: Enviar estado del paquete cifrado y HMAC
             String packageStatus = buscarEstadoDelPaquete(decryptedUserIdStr, decryptedPaqueteIdStr);
             byte[] encryptedPackageStatus = encryptAES(packageStatus, K_AB1, iv);
@@ -174,6 +201,18 @@ public class ThreadServidor extends Thread {
                 System.out.println("Servidor: Protocolo completado con éxito, cerrando conexión.");
                 System.out.println(
                         "Tiempo de ejecución responder el reto : " + executionTimeMilliseconds1 + " millisegundos");
+                System.out.println(
+                        "Tiempo de ejecución generar G : " + executionTimeMillisecondsG + " millisegundos");
+                System.out.println(
+                        "Tiempo de ejecución generar P : " + executionTimeMillisecondsP + " millisegundos");
+                System.out.println(
+                        "Tiempo de ejecución generar G^x : " + executionTimeMillisecondsGx + " millisegundos");
+
+                System.err.println(
+                        "Tiempo de ejecución parte simétrica: " + executionTimeMilliseconds1 + " millisegundos");
+                System.err.println(
+                        "Tiempo de ejecución verificar la consulta: " + executionTimeMillisecondsVE
+                                + " millisegundos");
             }
         } catch (BadPaddingException e) {
             System.out.println("Error en desencriptación: Verifica que la clave e IV coincidan.");
