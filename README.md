@@ -1,18 +1,24 @@
-## Getting Started
+## Cómo ejecutar el programa 
 
-Welcome to the VS Code Java world. Here is a guideline to help you get started to write Java code in Visual Studio Code.
+#Servidor:
+1. Ubicarse en la carpeta src.
+- Comando recomendado: cd src
+2. Compilar el programa, específicamente los archivos: Servidor.java, Cliente.java, ThreadServidor.java, ThreadCliente.java
+- Comando recomendado: javac Servidor.java Cliente.java ThreadServidor.java ThreadCliente.java
+3. Ejecutar el servidor
+- Comando recomendado: java Servidor
+4. Aparecerán 2 opciones: con la opción 1 se genera el par de llaves y con la opción 2 se inicializa el servidor para manejar las peticiones del cliente. Se debe ejecutar la opción 1 y después la 2
+5. Abrir una nueva terminal y seguir las siguientes instrucciones para inicializar los procesos del cliente
 
-## Folder Structure
+#Cliente:
+1. Ubicarse en la carpeta src.
+- Comando recomendado: cd src
+2. Ejecutar el cliente
+- Comando recomendado: java Cliente
+3. Escoger una opción con el número indicado por consola
+4. Visualizar la salida por consola tanto del cliente como del servidor que se está actualizando con respecto a las peticiones del cliente
 
-The workspace contains two folders by default, where:
-
-- `src`: the folder to maintain sources
-- `lib`: the folder to maintain dependencies
-
-Meanwhile, the compiled output files will be generated in the `bin` folder by default.
-
-> If you want to customize the folder structure, open `.vscode/settings.json` and update the related settings there.
-
-## Dependency Management
-
-The `JAVA PROJECTS` view allows you to manage your dependencies. More details can be found [here](https://github.com/microsoft/vscode-java-dependency#manage-dependencies).
+Notas:
+1. El cliente nunca se finaliza para facilitar las pruebas. De esta manera, al hacer enter después de terminar un proceso en la terminal de cliente se vuelve a ofrecer el menú
+2. Si se siguen los mensajes de consola se pueden ver los pasos descritos por el enunciado simulados. Los tiempos de ejecución son lo último que se imprime por control. Para seguir cuando termina y empieza una petición este es un punto de referencia
+3. Al no ser obligatorio, no se hizo uso de openssl para generar P y G
