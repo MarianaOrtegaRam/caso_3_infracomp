@@ -42,7 +42,7 @@ public class ThreadServidor extends Thread {
                 return;
             }
 
-            // Paso 2: Recibir desafío cifrado del cliente
+            // Paso 2b: Recibir desafío cifrado del cliente
             byte[] encryptedR = (byte[]) in.readObject();
 
             // Paso 3: Descifrar el desafío R usando la llave privada del servidor
@@ -57,7 +57,7 @@ public class ThreadServidor extends Thread {
             long executionTimeNanoseconds = endTime1 - startTime1;
             double executionTimeMilliseconds1 = executionTimeNanoseconds / 1000000.0;
             // FIN CASO 4 PARTE SIMETRICA
-            // Enviar RTA (que es el mismo R) de vuelta al cliente
+            // Paso 4: Enviar RTA (que es el mismo R) de vuelta al cliente
             out.writeObject(R);
             out.flush();
             System.out.println("Servidor: Enviado RTA al cliente");
@@ -114,13 +114,13 @@ public class ThreadServidor extends Thread {
             out.flush();
             System.out.println("Servidor: Envió G, P y G^x");
 
-            // Paso 11a: Recibir G^y del cliente y calcular la clave compartida
+            // Paso 11: Recibir G^y del cliente y calcular la clave compartida
             BigInteger Gy = (BigInteger) in.readObject();
             BigInteger sharedSecret = Gy.modPow(((DHPrivateKey) dhKeyPair.getPrivate()).getX(), P);
             System.out
                     .println("Servidor: Clave secreta compartida derivada: " + bytesToHex(sharedSecret.toByteArray()));
 
-            // Derivar claves AES y HMAC a partir de la clave compartida
+            // Paso 11b: Derivar claves AES(K_AB1) y HMAC(K_AB2) a partir de la clave compartida
             byte[] secretBytes = sha512(sharedSecret.toByteArray());
             SecretKey K_AB1 = new SecretKeySpec(secretBytes, 0, 32, "AES");
             SecretKey K_AB2 = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
@@ -138,12 +138,12 @@ public class ThreadServidor extends Thread {
             // caso 3
             long startTimeVE = System.nanoTime();
 
-            // Paso 4: Recibir ID de usuario y HMAC
+            // Paso 13: Recibir ID de usuario y HMAC
             byte[] encryptedUserId = (byte[]) in.readObject();
             byte[] hmacUserId = (byte[]) in.readObject();
             System.out.println("Servidor: Recibido ID de usuario cifrado y HMAC");
 
-            // Verificar y descifrar el ID de usuario...
+            // Paso 15: Verificar y descifrar el ID de usuario...
             byte[] decryptedUserId = decryptAES(encryptedUserId, K_AB1, iv);
             String decryptedUserIdStr = new String(decryptedUserId, StandardCharsets.UTF_8);
             byte[] hmacUserIDLocal = generateHMAC(decryptedUserIdStr, K_AB2);
@@ -160,11 +160,12 @@ public class ThreadServidor extends Thread {
             }
             System.out.println("Verificación HMAC exitosa. Procediendo...");
 
-            // Paso 5: Recibir ID de paquete y HMAC
+            // Paso 14: Recibir ID de paquete y HMAC
             byte[] encryptedPackageId = (byte[]) in.readObject();
             byte[] hmacPackageId = (byte[]) in.readObject();
             System.out.println("Servidor: Recibido ID de paquete cifrado y HMAC");
 
+            // Paso 15: Verificar y descifrar el ID de paquete...
             byte[] decryptedPaqueteId = decryptAES(encryptedPackageId, K_AB1, iv);
             String decryptedPaqueteIdStr = new String(decryptedPaqueteId, StandardCharsets.UTF_8);
             byte[] hmacPaqueteIDLocal = generateHMAC(decryptedPaqueteIdStr, K_AB2);
@@ -185,7 +186,7 @@ public class ThreadServidor extends Thread {
             long executionTimeNanosecondsVE = endTimeVE - startTimeVE;
             double executionTimeMillisecondsVE = executionTimeNanosecondsVE / 1000000.0;
             ///termina caso 3
-            // Paso 6: Enviar estado del paquete cifrado y HMAC
+            // Paso 16: Enviar estado del paquete cifrado y HMAC
             String packageStatus = buscarEstadoDelPaquete(decryptedUserIdStr, decryptedPaqueteIdStr);
             byte[] encryptedPackageStatus = encryptAES(packageStatus, K_AB1, iv);
             byte[] hmacPackageStatus = generateHMAC(packageStatus, K_AB2);
@@ -195,7 +196,7 @@ public class ThreadServidor extends Thread {
             out.flush();
             System.out.println("Servidor: Enviado estado del paquete cifrado y HMAC");
 
-            /// Confirmación de terminación
+            /// Paso 18: Confirmación de terminación
             String finalizar = (String) in.readObject();
             if ("TERMINAR".equals(finalizar)) {
                 System.out.println("Servidor: Protocolo completado con éxito, cerrando conexión.");

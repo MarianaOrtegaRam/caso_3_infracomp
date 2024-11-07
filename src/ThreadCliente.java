@@ -58,7 +58,7 @@ public class ThreadCliente extends Thread {
                 throw new IOException("Desajuste en el protocolo: Se esperaba OK, se recibió " + respuestaServidor);
             }
 
-            // Paso 1: Generar desafío R y cifrarlo con la llave pública del servidor
+            // Paso 2a: Generar desafío R y cifrarlo con la llave pública del servidor
 
             // CASO 4: PARTE ASIMETRICA
             long startTimeA = System.nanoTime();
@@ -85,7 +85,7 @@ public class ThreadCliente extends Thread {
                 return;
             }
 
-            // Paso 7: Recibir G, P y G^x del servidor
+            // Paso 8: Recibir G, P y G^x del servidor
             BigInteger G = (BigInteger) in.readObject();
             BigInteger P = (BigInteger) in.readObject();
             BigInteger Gx = (BigInteger) in.readObject();
@@ -108,7 +108,7 @@ public class ThreadCliente extends Thread {
             System.out.println(
                     "Cliente: Clave secreta compartida derivada: " + bytesToHex(sharedSecret.toByteArray()));
 
-            // Derivar claves AES y HMAC a partir de la clave compartida
+            //11a Derivar claves AES(K_AB1) y HMAC (K_AB2) a partir de la clave compartida
             byte[] secretBytes = sha512(sharedSecret.toByteArray());
             K_AB1 = new SecretKeySpec(secretBytes, 0, 32, "AES");
             K_AB2 = new SecretKeySpec(secretBytes, 32, 32, "HmacSHA384");
@@ -121,26 +121,26 @@ public class ThreadCliente extends Thread {
             iv = new IvParameterSpec((byte[]) in.readObject());
             System.out.println("Cliente: Recibió IV: " + bytesToHex(iv.getIV()));
 
-            // Paso 1: Enviar ID de usuario cifrado y HMAC
+            // Paso 13: Enviar ID de usuario cifrado y HMAC
             byte[] encryptedUserId = encryptAES(userId, K_AB1, iv);
             byte[] hmacUserId = generateHMAC(userId, K_AB2);
 
             out.writeObject(encryptedUserId);
             out.writeObject(hmacUserId);
 
-            // Paso 2: Enviar ID de paquete cifrado y HMAC
+            // Paso 14: Enviar ID de paquete cifrado y HMAC
             byte[] encryptedPackageId = encryptAES(packageId, K_AB1, iv);
             byte[] hmacPackageId = generateHMAC(packageId, K_AB2);
 
             out.writeObject(encryptedPackageId);
             out.writeObject(hmacPackageId);
 
-            // Paso 3: Recibir estado del paquete cifrado y su HMAC
+            // Paso 16: Recibir estado del paquete cifrado y su HMAC
             byte[] encryptedPackageStatus = (byte[]) in.readObject();
             byte[] hmacPackageStatus = (byte[]) in.readObject();
             String decryptedPackageStatus = new String(decryptAES(encryptedPackageStatus, K_AB1, iv), "UTF-8");
 
-            // Verificar HMAC del estado del paquete
+            // Paso 17: Verificar HMAC del estado del paquete
             byte[] calculatedHmacStatus = generateHMAC(decryptedPackageStatus, K_AB2);
             if (MessageDigest.isEqual(hmacPackageStatus, calculatedHmacStatus)) {
                 System.out.println("Cliente: El estado del paquete es auténtico.");
@@ -150,7 +150,7 @@ public class ThreadCliente extends Thread {
                 return;
             }
 
-            // Paso Final: Enviar "TERMINAR" y cerrar conexión
+            // Paso 18: Enviar "TERMINAR" y cerrar conexión
             out.writeObject("TERMINAR");
             out.flush();
             System.out.println("Cliente: Protocolo completado, cerrando conexión.");
@@ -176,22 +176,6 @@ public class ThreadCliente extends Thread {
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.ENCRYPT_MODE, key);
         return cipher.doFinal(data);
-    }
-
-    private static KeyPair generateDHKeyPair() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException {
-        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
-        keyGen.initialize(1024);
-        return keyGen.generateKeyPair();
-    }
-
-    private static BigInteger getGenerator() {
-        // Generate generator G (in real cases, retrieve from a trusted source)
-        return BigInteger.valueOf(2);
-    }
-
-    private static BigInteger getPrime() {
-        // Generate a large prime P (in real cases, retrieve from a trusted source)
-        return new BigInteger("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1", 16);
     }
 
     private static byte[] sha512(byte[] input) throws NoSuchAlgorithmException {
